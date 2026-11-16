@@ -1,0 +1,710 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a0d11" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f3f5f8" media="(prefers-color-scheme: light)">
+<title>Crawler Drive Console</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg:#0a0d11; --panel:#11151b; --raised:#171c24; --inset:#0c1015;
+    --line:rgba(255,255,255,.08); --line-2:rgba(255,255,255,.16);
+    --text:#e7ebf0; --muted:#8b95a3; --faint:#5d6775;
+    --accent:#ff9a2e; --accent-2:#ff7a00; --accent-ink:#1c0f00; --accent-soft:rgba(255,154,46,.14);
+    --ok:#34d27f; --ok-soft:rgba(52,210,127,.14); --warn:#f5b83d; --warn-soft:rgba(245,184,61,.14);
+    --bad:#ff5b52; --bad-soft:rgba(255,91,82,.16); --info:#5aa9ff; --info-soft:rgba(90,169,255,.14);
+    --shadow:0 1px 0 rgba(255,255,255,.03) inset, 0 12px 32px rgba(0,0,0,.35);
+    --ui:"Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono:ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Consolas, monospace;
+    --r:14px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --bg:#f3f5f8; --panel:#ffffff; --raised:#f6f8fa; --inset:#eef1f5;
+      --line:rgba(12,22,34,.10); --line-2:rgba(12,22,34,.20);
+      --text:#10151c; --muted:#566170; --faint:#8a94a2;
+      --accent:#e07300; --accent-2:#c96200; --accent-ink:#ffffff; --accent-soft:rgba(224,115,0,.12);
+      --ok:#12924f; --ok-soft:rgba(18,146,79,.12); --warn:#a86a00; --warn-soft:rgba(168,106,0,.12);
+      --bad:#d3352c; --bad-soft:rgba(211,53,44,.12); --info:#1f6fd6; --info-soft:rgba(31,111,214,.10);
+      --shadow:0 1px 2px rgba(12,22,34,.06), 0 8px 24px rgba(12,22,34,.06);
+    }
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; min-height:100%; background:var(--bg); color:var(--text); font:14px/1.4 var(--ui); overscroll-behavior:none; -webkit-font-smoothing:antialiased; }
+  body { min-height:100dvh; display:flex; flex-direction:column; touch-action:manipulation; }
+  h1, h2, h3, p { margin:0; }
+  .num { font-family:var(--mono); font-variant-numeric:tabular-nums; letter-spacing:-.01em; }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+  /* ---------- top bar ---------- */
+  .bar { position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:12px; padding:10px 16px; padding-top:calc(10px + env(safe-area-inset-top)); background:var(--bg); background:color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-bottom:1px solid var(--line); }
+  .brand { display:flex; align-items:center; gap:10px; min-width:0; margin-right:auto; }
+  .brand svg { flex:none; color:var(--accent); }
+  .brand b { display:block; font-size:14px; font-weight:700; letter-spacing:.16em; }
+  .brand span { display:block; font-size:11px; color:var(--muted); letter-spacing:.04em; margin-top:1px; }
+  .conn { display:flex; align-items:center; gap:8px; padding:6px 11px 6px 9px; border:1px solid var(--line); border-radius:999px; background:var(--panel); font-size:12px; font-weight:500; white-space:nowrap; min-width:0; }
+  #connShort { display:none; }
+  .conn .led { width:8px; height:8px; border-radius:50%; background:var(--faint); flex:none; }
+  .conn .fw { color:var(--muted); font-family:var(--mono); font-size:11px; font-weight:400; padding-left:8px; border-left:1px solid var(--line); overflow:hidden; text-overflow:ellipsis; }
+  body[data-state="on"] .conn .led { background:var(--ok); box-shadow:0 0 0 3px var(--ok-soft); }
+  body[data-state="sim"] .conn .led { background:var(--info); box-shadow:0 0 0 3px var(--info-soft); }
+  body[data-state="connecting"] .conn .led { background:var(--warn); animation:pulse 1s ease-in-out infinite; }
+  body[data-link="stale"] .conn .led { background:var(--warn); box-shadow:0 0 0 3px var(--warn-soft); }
+  @keyframes pulse { 50% { opacity:.35; } }
+  .switch { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); cursor:pointer; user-select:none; -webkit-user-select:none; }
+  .switch input { position:absolute; opacity:0; pointer-events:none; }
+  .switch .slot { width:34px; height:20px; border-radius:999px; background:var(--inset); border:1px solid var(--line-2); position:relative; transition:background .15s, border-color .15s; flex:none; }
+  .switch .slot::after { content:""; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:var(--muted); transition:transform .15s, background .15s; }
+  .switch input:checked + .slot { background:var(--info-soft); border-color:var(--info); }
+  .switch input:checked + .slot::after { transform:translateX(14px); background:var(--info); }
+  .switch .lbl-s { display:none; font-size:11px; font-weight:600; letter-spacing:.06em; }
+  .switch input:focus-visible + .slot { outline:2px solid var(--accent); outline-offset:2px; }
+
+  /* ---------- buttons ---------- */
+  .btn { font:600 13px/1 var(--ui); color:var(--text); background:var(--raised); border:1px solid var(--line-2); border-radius:10px; padding:11px 14px; cursor:pointer; transition:background .12s, border-color .12s, transform .05s; white-space:nowrap; }
+  .btn:hover { border-color:var(--muted); }
+  .btn:active { transform:translateY(1px); }
+  .btn:disabled { opacity:.45; cursor:default; }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .btn.primary:hover { background:var(--accent-2); border-color:var(--accent-2); }
+  .btn.ghost { background:transparent; border-color:var(--line); color:var(--muted); padding:7px 10px; font-size:12px; font-weight:500; }
+  .btn.ghost:hover { color:var(--text); }
+  .btn.stop { width:100%; background:var(--bad); border-color:var(--bad); color:#fff; font-size:17px; font-weight:800; letter-spacing:.22em; text-indent:.22em; padding:17px 14px; border-radius:12px; box-shadow:0 8px 22px var(--bad-soft); }
+  .btn.stop:hover { filter:brightness(1.06); border-color:var(--bad); }
+
+  /* ---------- layout ---------- */
+  .banner { margin:12px 16px 0; padding:10px 12px; border:1px solid var(--warn); background:var(--warn-soft); border-radius:10px; font-size:13px; line-height:1.45; }
+  main { flex:1; width:100%; max-width:1240px; margin:0 auto; padding:14px 16px 20px; display:grid; gap:14px; grid-template-columns:minmax(0, 1fr); grid-template-areas:"drive" "tele" "console"; }
+  main > * { min-width:0; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:var(--r); box-shadow:var(--shadow); padding:14px; }
+  .panel-h { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; min-height:24px; }
+  .panel-h h2 { font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
+  .tag { font-size:11px; font-weight:600; letter-spacing:.04em; padding:3px 9px; border-radius:999px; border:1px solid var(--line); color:var(--muted); background:var(--inset); white-space:nowrap; }
+  .tag[data-tone="ok"] { color:var(--ok); border-color:transparent; background:var(--ok-soft); }
+  .tag[data-tone="warn"] { color:var(--warn); border-color:transparent; background:var(--warn-soft); }
+  .tag[data-tone="bad"] { color:var(--bad); border-color:transparent; background:var(--bad-soft); }
+  .tag[data-tone="accent"] { color:var(--accent); border-color:transparent; background:var(--accent-soft); }
+  .tag[data-tone="info"] { color:var(--info); border-color:transparent; background:var(--info-soft); }
+  .drive { grid-area:drive; align-self:start; } .tele { grid-area:tele; } .console { grid-area:console; display:flex; flex-direction:column; }
+  .tags { display:flex; align-items:center; justify-content:flex-end; gap:6px; flex-wrap:wrap; }
+  .hint { color:var(--faint); font-size:12px; text-align:center; margin-top:12px; }
+  .stopbar { display:none; }
+
+  /* ---------- joystick ---------- */
+  .pad-wrap { display:flex; justify-content:center; padding:4px 0 2px; }
+  #pad { position:relative; width:min(74vw, 300px); aspect-ratio:1; border-radius:50%; touch-action:none; user-select:none; -webkit-user-select:none; cursor:grab;
+         background:radial-gradient(circle at 50% 42%, var(--raised) 0%, var(--inset) 72%); border:1px solid var(--line-2); box-shadow:inset 0 0 0 10px var(--panel), inset 0 0 0 11px var(--line), inset 0 18px 40px rgba(0,0,0,.18); transition:border-color .15s, box-shadow .15s; }
+  #pad.active { cursor:grabbing; border-color:var(--accent); box-shadow:inset 0 0 0 10px var(--panel), inset 0 0 0 11px var(--line), inset 0 18px 40px rgba(0,0,0,.18), 0 0 0 4px var(--accent-soft); }
+  #pad svg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; color:var(--line-2); }
+  #pad .lbl { position:absolute; font-size:9.5px; font-weight:600; letter-spacing:.14em; color:var(--faint); pointer-events:none; }
+  #pad .lbl.n { top:8.5%; left:50%; transform:translateX(-50%); } #pad .lbl.s { bottom:8.5%; left:50%; transform:translateX(-50%); }
+  #pad .lbl.w { left:8%; top:50%; transform:translateY(-50%); } #pad .lbl.e { right:8%; top:50%; transform:translateY(-50%); }
+  #knob { position:absolute; width:27%; height:27%; left:36.5%; top:36.5%; border-radius:50%; pointer-events:none;
+          background:radial-gradient(circle at 50% 30%, #ffc27a 0%, var(--accent) 45%, var(--accent-2) 100%); box-shadow:0 10px 22px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.45), inset 0 -6px 12px rgba(0,0,0,.18); transition:filter .2s; }
+  #knob::after { content:""; position:absolute; inset:28%; border-radius:50%; border:1.5px solid rgba(0,0,0,.22); }
+  body[data-state="off"] #knob, body[data-state="connecting"] #knob { filter:saturate(.2) brightness(.8); }
+
+  /* ---------- command gauges ---------- */
+  .vec { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; }
+  .gauge { background:var(--inset); border:1px solid var(--line); border-radius:10px; padding:9px 10px 10px; min-width:0; }
+  .gauge .g-top { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+  .gauge .g-k { font-size:10.5px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); }
+  .gauge .g-v { font-size:15px; font-weight:600; white-space:nowrap; }
+  .meter { position:relative; height:6px; border-radius:3px; background:var(--line); margin-top:8px; overflow:hidden; }
+  .meter::before { content:""; position:absolute; left:50%; top:0; bottom:0; width:1px; background:var(--line-2); }
+  .meter i { position:absolute; top:0; bottom:0; left:50%; width:0; background:var(--accent); border-radius:3px; transition:width .08s linear, left .08s linear; }
+  .limit { margin-top:14px; }
+  .limit .l-top { display:flex; justify-content:space-between; align-items:baseline; font-size:12px; color:var(--muted); }
+  .limit .l-top b { color:var(--text); font-size:14px; font-weight:600; }
+  input[type=range] { -webkit-appearance:none; appearance:none; width:100%; height:26px; background:transparent; margin:4px 0 0; cursor:pointer; }
+  input[type=range]::-webkit-slider-runnable-track { height:6px; border-radius:3px; background:linear-gradient(90deg, var(--accent) var(--fill, 44%), var(--line) var(--fill, 44%)); }
+  input[type=range]::-moz-range-track { height:6px; border-radius:3px; background:var(--line); }
+  input[type=range]::-moz-range-progress { height:6px; border-radius:3px; background:var(--accent); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:22px; height:22px; margin-top:-8px; border-radius:50%; background:var(--panel); border:2px solid var(--accent); box-shadow:0 2px 6px rgba(0,0,0,.3); }
+  input[type=range]::-moz-range-thumb { width:18px; height:18px; border-radius:50%; background:var(--panel); border:2px solid var(--accent); }
+  .drive .btn.stop { margin-top:14px; }
+  .actions { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:8px; margin-top:10px; }
+  .actions .btn { padding:11px 6px; font-size:12.5px; overflow:hidden; text-overflow:ellipsis; }
+
+  /* ---------- drivetrain ---------- */
+  .chassis { display:grid; grid-template-columns:minmax(0, 1fr) 58px minmax(0, 1fr); grid-template-areas:"fl body fr" "rl body rr"; gap:10px; }
+  .body-art { grid-area:body; display:flex; align-items:stretch; justify-content:center; color:var(--line-2); }
+  .body-art svg { width:100%; height:100%; min-height:150px; }
+  .body-art text { fill:var(--faint); font:600 8px var(--ui); letter-spacing:.16em; }
+  .wheel { position:relative; background:var(--inset); border:1px solid var(--line); border-radius:10px; padding:9px 10px 10px; min-width:0; }
+  .wheel .w-top { display:flex; align-items:center; gap:6px; }
+  .wheel .w-name { font-size:11px; font-weight:700; letter-spacing:.12em; color:var(--muted); margin-right:auto; }
+  .wheel .w-ch { font:600 10px var(--mono); color:var(--faint); border:1px solid var(--line); border-radius:5px; padding:1px 5px; }
+  .wheel .w-test { font-size:9.5px; font-weight:700; letter-spacing:.08em; padding:2px 6px; border-radius:999px; }
+  .wheel .w-test[data-r="pass"] { color:var(--ok); background:var(--ok-soft); } .wheel .w-test[data-r="warn"] { color:var(--warn); background:var(--warn-soft); } .wheel .w-test[data-r="fail"] { color:var(--bad); background:var(--bad-soft); }
+  .wheel .w-rpm { display:flex; align-items:baseline; gap:5px; margin-top:4px; }
+  .wheel .w-rpm span { font-size:26px; font-weight:600; line-height:1.1; }
+  .wheel .w-rpm small { font-size:11px; color:var(--muted); }
+  .wheel .w-cnt { font-size:11px; color:var(--faint); margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .wheel .meter i { background:var(--ok); } .wheel .meter i.rev { background:var(--info); }
+  .stats { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; margin-top:10px; }
+  .stat { border:1px solid var(--line); border-radius:10px; padding:9px 10px; min-width:0; }
+  .stat .s-k { font-size:10.5px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .stat .s-v { font-size:15px; font-weight:600; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .stat .s-s { font-size:11.5px; color:var(--faint); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .stat[data-tone="ok"] .s-v { color:var(--ok); } .stat[data-tone="warn"] .s-v { color:var(--warn); } .stat[data-tone="bad"] .s-v { color:var(--bad); }
+  .stat.flash { animation:flash .9s ease-out; }
+  @keyframes flash { 0% { background:var(--warn-soft); border-color:var(--warn); } 100% { background:transparent; } }
+
+  /* ---------- console ---------- */
+  #log { flex:1; min-height:170px; max-height:38vh; overflow:auto; background:var(--inset); border:1px solid var(--line); border-radius:10px; padding:8px 10px; font:12px/1.5 var(--mono); }
+  #log div { display:grid; grid-template-columns:auto 12px minmax(0, 1fr); gap:8px; white-space:pre-wrap; word-break:break-word; }
+  #log time { color:var(--faint); } #log b { font-weight:400; color:var(--faint); text-align:center; }
+  #log .tx span, #log .tx b { color:var(--info); }
+  #log .err span { color:var(--bad); } #log .sys span { color:var(--muted); } #log .warn span { color:var(--warn); }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+  .chip { font:500 12px var(--ui); color:var(--muted); background:transparent; border:1px solid var(--line); border-radius:999px; padding:6px 10px; cursor:pointer; }
+  .chip:hover { color:var(--text); border-color:var(--line-2); }
+  .chip kbd { font:600 11px var(--mono); color:var(--text); margin-right:5px; }
+  .cmdline { display:flex; gap:8px; margin-top:10px; }
+  .cmdline input { flex:1; min-width:0; font:13px var(--mono); background:var(--inset); color:var(--text); border:1px solid var(--line-2); border-radius:10px; padding:11px 12px; }
+  .cmdline input::placeholder { color:var(--faint); }
+  .cmdline input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+
+  /* ---------- dialog and toast ---------- */
+  dialog { border:1px solid var(--line-2); border-radius:16px; background:var(--panel); color:var(--text); padding:20px; width:min(92vw, 400px); box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  dialog::backdrop { background:rgba(0,0,0,.55); }
+  dialog h3 { margin:0 0 8px; font-size:16px; } dialog p { color:var(--muted); font-size:13.5px; line-height:1.5; }
+  dialog .d-row { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+  #toasts { position:fixed; left:50%; bottom:calc(96px + env(safe-area-inset-bottom)); transform:translateX(-50%); display:flex; flex-direction:column; gap:8px; z-index:50; width:min(92vw, 420px); pointer-events:none; }
+  .toast { background:var(--raised); border:1px solid var(--line-2); border-left:3px solid var(--bad); border-radius:10px; padding:10px 12px; font-size:13px; box-shadow:0 12px 32px rgba(0,0,0,.4); animation:rise .18s ease-out; }
+  .toast[data-tone="ok"] { border-left-color:var(--ok); } .toast[data-tone="warn"] { border-left-color:var(--warn); }
+  @keyframes rise { from { opacity:0; transform:translateY(6px); } }
+
+  /* ---------- phone ---------- */
+  @media (max-width:859px) {
+    .bar { gap:8px; padding-left:12px; padding-right:12px; }
+    .brand span, .conn .fw, .switch .lbl { display:none; }
+    .switch { gap:6px; } .switch .lbl-s { display:inline; } #connText { display:none; } #connShort { display:inline; }
+    body[data-state="sim"] .switch .lbl-s { display:none; }
+    .brand { gap:8px; } .brand b { letter-spacing:.12em; } .conn { padding:6px 9px 6px 8px; gap:7px; }
+    .bar .btn { padding:11px 12px; }
+    main { padding:12px 12px 104px; gap:12px; align-content:start; }
+    .drive .btn.stop { display:none; }
+    .stopbar { display:block; position:fixed; left:0; right:0; bottom:0; z-index:30; padding:22px 12px calc(12px + env(safe-area-inset-bottom)); background:linear-gradient(to bottom, transparent, var(--bg) 42%); pointer-events:none; }
+    .stopbar .btn { pointer-events:auto; }
+    #log { max-height:240px; }
+  }
+  @media (max-width:379px) { .brand b { display:none; } .actions .btn { font-size:12px; padding:11px 2px; } }
+  /* ---------- laptop ---------- */
+  @media (min-width:860px) {
+    main { grid-template-columns:minmax(360px, 430px) minmax(0, 1fr); grid-template-areas:"drive tele" "drive console"; grid-template-rows:auto minmax(0, 1fr); padding:18px 20px 24px; gap:16px; }
+    .panel { padding:18px; }
+    #pad { width:min(100%, 320px); }
+    .stats { grid-template-columns:repeat(4, minmax(0, 1fr)); }
+    .chassis { grid-template-columns:minmax(0, 1fr) 76px minmax(0, 1fr); }
+    #toasts { bottom:24px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
+</style>
+</head>
+<body data-state="off" data-link="none">
+
+<header class="bar">
+  <div class="brand">
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true"><rect x="7" y="4.5" width="14" height="19" rx="3.5" stroke="currentColor" stroke-width="1.8"/><rect x="1.5" y="5" width="4" height="7.5" rx="1.6" fill="currentColor"/><rect x="22.5" y="5" width="4" height="7.5" rx="1.6" fill="currentColor"/><rect x="1.5" y="15.5" width="4" height="7.5" rx="1.6" fill="currentColor"/><rect x="22.5" y="15.5" width="4" height="7.5" rx="1.6" fill="currentColor"/><path d="M14 9.2v6.2M11.4 11.6 14 9l2.6 2.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div><b>CRAWLER</b><span>Drive console</span></div>
+  </div>
+  <div class="conn" role="status" aria-live="polite"><span class="led"></span><span id="connText">Disconnected</span><span id="connShort">Offline</span><span class="fw" id="fw" hidden></span></div>
+  <label class="switch" title="Run against a built-in simulated robot"><input type="checkbox" id="sim" aria-label="Simulator"><span class="slot"></span><span class="lbl">Simulator</span><span class="lbl-s">Sim</span></label>
+  <button id="connect" class="btn primary">Connect</button>
+</header>
+
+<div class="banner" id="banner" hidden></div>
+
+<main>
+  <section class="panel drive" aria-label="Drive">
+    <div class="panel-h"><h2>Drive</h2><span class="tags"><span class="tag" id="flipTag" data-tone="warn" title="The robot is on its back. Forward and back are corrected for you." hidden>Upside down</span><span class="tag" id="driveTag">Idle</span></span></div>
+    <div class="pad-wrap">
+      <div id="pad" role="application" aria-label="Joystick. Drag to drive, release to stop.">
+        <svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width=".35"><circle cx="50" cy="50" r="23" stroke-dasharray="1 1.6"/><path d="M50 18v64M18 50h64"/><path d="M50 13.5v3M50 83.5v3M13.5 50h3M83.5 50h3" stroke-width=".9" stroke-linecap="round"/></svg>
+        <span class="lbl n">FWD</span><span class="lbl s">REV</span><span class="lbl w">L</span><span class="lbl e">R</span>
+        <div id="knob"></div>
+      </div>
+    </div>
+    <div class="vec">
+      <div class="gauge"><div class="g-top"><span class="g-k">Throttle</span><span class="g-v num" id="fwdv">0 %</span></div><div class="meter"><i id="fwdBar"></i></div></div>
+      <div class="gauge"><div class="g-top"><span class="g-k">Steering</span><span class="g-v num" id="turnv">0 %</span></div><div class="meter"><i id="turnBar"></i></div></div>
+    </div>
+    <div class="limit">
+      <div class="l-top"><label for="lim">Speed limit</label><b class="num"><span id="limv">50</span> %</b></div>
+      <input type="range" id="lim" min="10" max="100" value="50" step="5">
+    </div>
+    <button class="btn stop" id="stop">STOP</button>
+    <div class="actions">
+      <button class="btn" id="brake">Brake</button>
+      <button class="btn" id="selftest">Self-test</button>
+      <button class="btn" id="flipDemo" title="Tell the board it is upside down (FLIP ON), press again to go back to automatic (FLIP AUTO)">Flip over</button>
+      <button class="btn" id="status">Status</button>
+      <button class="btn" id="zero" title="Zero the encoder counts">Zero</button>
+    </div>
+    <p class="hint" id="kbdHint">Keyboard: W A S D or arrow keys. Space stops.</p>
+  </section>
+
+  <section class="panel tele" aria-label="Drivetrain">
+    <div class="panel-h"><h2>Drivetrain</h2><span class="tag" id="linkTag">No link</span></div>
+    <div class="chassis">
+      <div class="wheel" style="grid-area:fl"><div class="w-top"><span class="w-name">FL</span><span class="w-test" id="tst0" hidden></span><span class="w-ch" id="ch0">A</span></div><div class="w-rpm"><span class="num" id="rpm0">0</span><small>rpm</small></div><div class="meter"><i id="bar0"></i></div><div class="w-cnt num" id="cnt0">0 counts</div></div>
+      <div class="wheel" style="grid-area:fr"><div class="w-top"><span class="w-name">FR</span><span class="w-test" id="tst1" hidden></span><span class="w-ch" id="ch1">B</span></div><div class="w-rpm"><span class="num" id="rpm1">0</span><small>rpm</small></div><div class="meter"><i id="bar1"></i></div><div class="w-cnt num" id="cnt1">0 counts</div></div>
+      <div class="body-art" aria-hidden="true"><svg viewBox="0 0 60 160" preserveAspectRatio="xMidYMid meet" fill="none" stroke="currentColor"><rect x="8" y="8" width="44" height="144" rx="9" stroke-width="1.2"/><path d="M30 44V22M23 29l7-7 7 7" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><text x="30.6" y="58" text-anchor="middle" stroke="none">FRONT</text><rect x="19" y="98" width="22" height="34" rx="3" stroke-width=".8" stroke-dasharray="2 2"/></svg></div>
+      <div class="wheel" style="grid-area:rl"><div class="w-top"><span class="w-name">RL</span><span class="w-test" id="tst2" hidden></span><span class="w-ch" id="ch2">C</span></div><div class="w-rpm"><span class="num" id="rpm2">0</span><small>rpm</small></div><div class="meter"><i id="bar2"></i></div><div class="w-cnt num" id="cnt2">0 counts</div></div>
+      <div class="wheel" style="grid-area:rr"><div class="w-top"><span class="w-name">RR</span><span class="w-test" id="tst3" hidden></span><span class="w-ch" id="ch3">D</span></div><div class="w-rpm"><span class="num" id="rpm3">0</span><small>rpm</small></div><div class="meter"><i id="bar3"></i></div><div class="w-cnt num" id="cnt3">0 counts</div></div>
+    </div>
+    <div class="stats">
+      <div class="stat" id="stLink"><div class="s-k">Link</div><div class="s-v" id="linkv">Offline</div><div class="s-s num" id="links">no reply yet</div></div>
+      <div class="stat" id="stDrv"><div class="s-k">Motor driver</div><div class="s-v" id="drvv">&ndash;</div><div class="s-s num" id="drvs">not checked</div></div>
+      <div class="stat" id="stWdt"><div class="s-k">Watchdog</div><div class="s-v num" id="wdtv">&ndash;</div><div class="s-s num" id="wdts">safety stop timer</div></div>
+      <div class="stat" id="stMap"><div class="s-k">Wheel map</div><div class="s-v num" id="mapv">&ndash;</div><div class="s-s" id="mapline">FL FR RL RR</div></div>
+    </div>
+  </section>
+
+  <section class="panel console" aria-label="Console">
+    <div class="panel-h"><h2>Console</h2><span style="display:flex;gap:6px"><button class="btn ghost" id="copyLog">Copy</button><button class="btn ghost" id="clearLog">Clear</button></span></div>
+    <div id="log" role="log"></div>
+    <div class="chips">
+      <button class="chip" data-cmd="?"><kbd>?</kbd>Status</button>
+      <button class="chip" data-cmd="E"><kbd>E</kbd>Encoders</button>
+      <button class="chip" data-cmd="V"><kbd>V</kbd>Version</button>
+      <button class="chip" data-cmd="MAP"><kbd>MAP</kbd>Wheel map</button>
+      <button class="chip" data-cmd="FLIP"><kbd>FLIP</kbd>Way up</button>
+      <button class="chip" data-cmd="H"><kbd>H</kbd>Help</button>
+    </div>
+    <form class="cmdline" id="form">
+      <input id="cmd" placeholder="Type a command, for example  MAP A -B C -D" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" aria-label="Command">
+      <button type="submit" class="btn">Send</button>
+    </form>
+  </section>
+</main>
+
+<div class="stopbar"><button class="btn stop" id="stopFab">STOP</button></div>
+<div id="toasts" aria-live="assertive"></div>
+<dialog id="dlg"><h3 id="dlgTitle"></h3><p id="dlgText"></p><div class="d-row"><button class="btn" id="dlgNo">Cancel</button><button class="btn primary" id="dlgYes">Continue</button></div></dialog>
+
+<script>
+(() => {
+  'use strict';
+  const NUS = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+  const NUS_RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';   // we write here
+  const NUS_TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';   // board notifies here
+  const SEND_PERIOD_MS = 100;        // 10 Hz while driving; the board's watchdog is 500 ms
+  const TELEMETRY_MS = 200;
+  const RPM_FULL = 333;              // full scale of the wheel bars
+  const STALE_S = 1.5;               // no reply for this long while connected = link shown as stale
+
+  const $ = id => document.getElementById(id);
+  const logEl = $('log');
+
+  // ---------- small UI helpers ----------
+  const two = n => String(n).padStart(2, '0');
+  const stamp = () => { const d = new Date(); return two(d.getHours()) + ':' + two(d.getMinutes()) + ':' + two(d.getSeconds()); };
+  function log(text, cls) {
+    const row = document.createElement('div'); if (cls) row.className = cls;
+    const t = document.createElement('time'); t.textContent = stamp();
+    const a = document.createElement('b'); a.textContent = cls === 'tx' ? '→' : cls === 'sys' ? '·' : '←';
+    const s = document.createElement('span'); s.textContent = text;
+    row.append(t, a, s);
+    const stick = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 48;
+    logEl.appendChild(row); while (logEl.childElementCount > 400) logEl.removeChild(logEl.firstChild);
+    if (stick) logEl.scrollTop = logEl.scrollHeight;
+  }
+  const logText = () => [...logEl.children].map(r => r.children[0].textContent + ' ' + (r.className === 'tx' ? '>' : '<') + ' ' + r.children[2].textContent).join('\n');
+  function toast(text, tone) {
+    const el = document.createElement('div'); el.className = 'toast'; if (tone) el.dataset.tone = tone; el.textContent = text;
+    $('toasts').appendChild(el); setTimeout(() => el.remove(), 4200);
+  }
+  function setTag(el, text, tone) { el.textContent = text; if (tone) el.dataset.tone = tone; else delete el.dataset.tone; }
+  function setTone(id, tone) { const el = $(id); if (tone) el.dataset.tone = tone; else delete el.dataset.tone; }
+  function flash(id) { const el = $(id); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+  function ask(title, text, yes) {
+    const dlg = $('dlg');
+    if (!dlg.showModal) return Promise.resolve(confirm(title + '\n\n' + text));
+    $('dlgTitle').textContent = title; $('dlgText').textContent = text; $('dlgYes').textContent = yes || 'Continue';
+    return new Promise(res => {
+      const done = v => { $('dlgYes').onclick = $('dlgNo').onclick = dlg.oncancel = null; if (dlg.open) dlg.close(); res(v); };
+      $('dlgYes').onclick = () => done(true); $('dlgNo').onclick = () => done(false); dlg.oncancel = () => done(false);
+      dlg.showModal();
+    });
+  }
+
+  // ---------- transport: real BLE or simulator ----------
+  let link = null;   // { send(line), close(), name }
+  let lastReplyAt = 0, rxBuf = '';
+  let driving = false;   // joystick or keys held
+  let mapStr = '', order = [0, 1, 2, 3], sign = [1, 1, 1, 1], trips = 0, wdtMs = null;
+  let inverted = null, pose = 'UP';   // inverted is null until the board says which way up it is
+  function showWay() {
+    const edge = pose === 'SIDE' || pose === 'END', el = $('flipTag');
+    el.hidden = !(edge || inverted); el.textContent = pose === 'SIDE' ? 'On its side' : pose === 'END' ? 'On its end' : 'Upside down';
+    el.dataset.tone = edge ? 'bad' : 'warn';
+  }
+  function setPose(p) {
+    if (p === pose) return;
+    const wasEdge = pose === 'SIDE' || pose === 'END'; pose = p; showWay();
+    if (p === 'SIDE') toast('On its side. The wheels cannot drive it out, it needs a push.');
+    else if (p === 'END') toast('Standing on its end. It needs a push.');
+    else if (wasEdge) toast('Back on its wheels.', 'ok');
+  }
+  function setInverted(inv) {
+    if (inv === inverted) return;
+    const first = inverted === null; inverted = inv; showWay();
+    $('flipDemo').textContent = inv ? 'Flip back' : 'Flip over';
+    if (inv) toast('Robot is upside down. Forward and back are corrected for you.', 'warn');
+    else if (!first) toast('Robot is upright again.', 'ok');
+  }
+
+  function setState(state, name) {      // off | connecting | on | sim
+    document.body.dataset.state = state;
+    const on = state === 'on' || state === 'sim';
+    $('connText').textContent = state === 'connecting' ? 'Connecting…' : state === 'on' ? 'Connected' : state === 'sim' ? 'Simulator' : 'Disconnected';
+    $('connShort').textContent = state === 'connecting' ? 'Linking…' : state === 'on' ? 'Online' : state === 'sim' ? 'Simulated' : 'Offline';
+    $('connect').textContent = on ? 'Disconnect' : 'Connect';
+    $('connect').classList.toggle('primary', !on);
+    $('connect').disabled = state === 'connecting';
+    $('sim').disabled = state !== 'off';
+    if (!on) {
+      document.body.dataset.link = 'none'; lastReplyAt = 0; trips = 0; wdtMs = null; inverted = null; pose = 'UP'; $('flipTag').hidden = true;
+      $('fw').hidden = true; setTag($('linkTag'), 'No link');
+      $('linkv').textContent = 'Offline'; $('links').textContent = 'no reply yet'; setTone('stLink');
+      $('drvv').textContent = '–'; $('drvs').textContent = 'not checked'; setTone('stDrv');
+      $('wdtv').textContent = '–'; $('wdts').textContent = 'safety stop timer'; setTone('stWdt');
+      for (let i = 0; i < 4; i++) { $('rpm' + i).textContent = '0'; $('bar' + i).style.width = '0'; $('tst' + i).hidden = true; }
+    } else { $('links').textContent = name || ''; }
+  }
+  function applyMap(str) {
+    mapStr = str.trim();
+    order = [0, 1, 2, 3]; sign = [1, 1, 1, 1];
+    if (/^[-+]?[A-D]( [-+]?[A-D]){3}$/.test(mapStr)) mapStr.split(' ').forEach((t, i) => { order[i] = t.replace(/[-+]/, '').charCodeAt(0) - 65; sign[i] = t.startsWith('-') ? -1 : 1; });
+    $('mapv').textContent = mapStr.replace(/-/g, '−');
+    for (let w = 0; w < 4; w++) $('ch' + w).textContent = (sign[w] < 0 ? '−' : '') + String.fromCharCode(65 + order[w]);
+  }
+  function showWdt() { if (wdtMs === null) return; $('wdtv').textContent = wdtMs ? wdtMs + ' ms' : 'Off'; $('wdts').textContent = trips + (trips === 1 ? ' safety stop' : ' safety stops'); setTone('stWdt', wdtMs ? null : 'warn'); }
+
+  function onLine(line) {
+    lastReplyAt = Date.now();
+    if (line.startsWith('E ')) { parseE(line); return; }
+    if (line === 'OK' && (driving || Date.now() - lastDriveSentAt < 400)) return;   /* no 10 Hz "OK" spam while steering */
+    log(line, line.startsWith('ERR') ? 'err' : line.startsWith('WDT') ? 'warn' : '');
+    let m;
+    if (line.startsWith('ERR')) toast(line.replace(/^ERR\s*/, ''));
+    if ((m = line.match(/^HELLO (crawler-fw \S+)/)) || (m = line.match(/^V (crawler-fw \S+)/)) || (m = line.match(/^STATUS fw=crawler-fw (\S+)/))) { $('fw').textContent = m[1].replace('crawler-fw ', 'fw '); if (!/^fw /.test($('fw').textContent)) $('fw').textContent = 'fw ' + $('fw').textContent; $('fw').hidden = false; }
+    if (line.startsWith('STATUS')) {
+      if ((m = line.match(/pca=(\S+)/))) { const ok = m[1] !== 'MISSING'; $('drvv').textContent = ok ? 'OK' : 'Missing'; $('drvs').textContent = ok ? 'PCA9685 at ' + m[1] : 'chip not found'; setTone('stDrv', ok ? 'ok' : 'bad'); }
+      if ((m = line.match(/wdt=(\d+)/))) wdtMs = +m[1];
+      if ((m = line.match(/trips=(\d+)/))) trips = +m[1];
+      if ((m = line.match(/\binv=(\d)/))) setInverted(m[1] === '1');
+      if ((m = line.match(/\bpose=(\w+)/))) setPose(m[1]);
+      showWdt();
+    }
+    if (line.startsWith('FLIP upside down')) { setPose('DOWN'); setInverted(true); }
+    if (line.startsWith('FLIP upright') || line.startsWith('POSE upright')) { setPose('UP'); setInverted(false); }
+    if (line.startsWith('POSE on its side')) setPose('SIDE');
+    if (line.startsWith('POSE on its end')) setPose('END');
+    if ((m = line.match(/^(?:OK )?FLIP mode=\S+ inverted=(\d)(?:.* pose=(\w+))?/))) { if (m[2]) setPose(m[2]); setInverted(m[1] === '1'); }
+    if ((m = line.match(/^OK watchdog (\d+) ms/))) { wdtMs = +m[1]; showWdt(); }
+    if (line.startsWith('WDT')) { trips++; if (wdtMs === null) wdtMs = 500; showWdt(); flash('stWdt'); }
+    if ((m = line.match(/^(?:OK )?MAP (.+)$/))) applyMap(m[1]);
+    if (line === 'T start') { for (let i = 0; i < 4; i++) $('tst' + i).hidden = true; setTag($('driveTag'), 'Self-test', 'info'); }
+    if ((m = line.match(/^T ([A-D]) fwd=\S+ rev=\S+ (.*)$/))) {
+      const w = order.indexOf(m[1].charCodeAt(0) - 65), el = $('tst' + (w < 0 ? 0 : w)), v = m[2];
+      const r = v.startsWith('ok, encoder agrees') ? ['pass', 'PASS'] : v.startsWith('ok,') ? ['warn', 'A/B'] : v.startsWith('no encoder') ? ['fail', 'NO ENC'] : ['warn', 'CHECK'];
+      el.dataset.r = r[0]; el.textContent = r[1]; el.title = v; el.hidden = false;
+    }
+    if (line === 'T done' || line === 'T aborted') { setTag($('driveTag'), 'Idle'); toast(line === 'T done' ? 'Self-test finished' : 'Self-test stopped', line === 'T done' ? 'ok' : 'warn'); }
+  }
+  function onBytes(text) {
+    rxBuf += text;
+    let i; while ((i = rxBuf.indexOf('\n')) >= 0) { const l = rxBuf.slice(0, i).replace(/\r$/, ''); rxBuf = rxBuf.slice(i + 1); if (l) onLine(l); }
+  }
+  function parseE(line) {
+    const p = line.split(/\s+/); if (p.length < 9) return;
+    const counts = p.slice(1, 5).map(Number), rpm = p.slice(5, 9).map(Number);
+    // E reports channels A B C D; each wheel shows the channel that drives it, as wheel direction (forward is positive)
+    for (let w = 0; w < 4; w++) {
+      const ch = order[w], r = rpm[ch] * sign[w];
+      $('rpm' + w).textContent = Math.abs(r) < 0.05 ? '0' : r.toFixed(0);
+      const wd = Math.min(1, Math.abs(r) / RPM_FULL) * 50, bar = $('bar' + w);
+      bar.style.width = wd + '%'; bar.style.left = (r >= 0 ? 50 : 50 - wd) + '%'; bar.classList.toggle('rev', r < 0);
+      $('cnt' + w).textContent = (counts[ch] * sign[w]).toLocaleString('en-US') + ' counts';
+    }
+  }
+
+  let lastDriveSentAt = 0;
+  async function send(line) {
+    if (!link) { if (!/^D /.test(line) && line !== 'S') toast('Not connected. Press Connect first.', 'warn'); return; }
+    if (/^D /.test(line)) lastDriveSentAt = Date.now(); else log(line, 'tx');
+    try { await link.send(line + '\n'); } catch (e) { log('send failed: ' + e.message, 'err'); }
+  }
+
+  // --- real Web Bluetooth ---
+  async function connectBLE() {
+    if (!navigator.bluetooth) throw new Error(window.isSecureContext === false
+      ? 'Chrome is hiding Bluetooth because this address is not marked secure. See the yellow box at the top of the page.'
+      : 'this browser has no Web Bluetooth. Use Chrome on Android, or Chrome or Edge on a laptop.');
+    log('choose CRAWLER in the list', 'sys');
+    const device = await navigator.bluetooth.requestDevice({ filters: [{ services: [NUS] }, { namePrefix: 'CRAWLER' }, { namePrefix: 'Crawler' }], optionalServices: [NUS] });
+    const server = await device.gatt.connect();
+    const svc = await server.getPrimaryService(NUS);
+    const rx = await svc.getCharacteristic(NUS_RX);
+    const tx = await svc.getCharacteristic(NUS_TX);
+    const dec = new TextDecoder(), enc = new TextEncoder();
+    tx.addEventListener('characteristicvaluechanged', ev => onBytes(dec.decode(ev.target.value)));
+    await tx.startNotifications();
+    device.addEventListener('gattserverdisconnected', () => { if (!link) return; log('disconnected', 'sys'); toast('Robot disconnected', 'warn'); link = null; driving = false; resetDrive(); setState('off'); });
+    let chain = Promise.resolve();
+    const writeOne = data => rx.writeValueWithoutResponse ? rx.writeValueWithoutResponse(data) : rx.writeValue(data);
+    return {
+      name: device.name || 'CRAWLER',
+      send: text => { const data = enc.encode(text); chain = chain.then(() => writeOne(data)).catch(() => {}); return chain; },
+      close: () => device.gatt.disconnect(),
+    };
+  }
+
+  // --- simulator: behaves like the firmware, for testing the page without a board ---
+  function connectSim() {
+    const st = { t: [0, 0, 0, 0], a: [0, 0, 0, 0], c: [0, 0, 0, 0], wdt: 500, trips: 0, last: Date.now(), busy: false, map: 'A B C D', flip: 'AUTO', pose: '' };
+    let timer, teleTimer;
+    const reply = s => setTimeout(() => onBytes(s + '\n'), 15);
+    const eLine = () => 'E ' + st.c.join(' ') + ' ' + st.a.map(v => (v * 3.33).toFixed(1)).join(' ');
+    timer = setInterval(() => {
+      const now = Date.now();
+      if (st.wdt && st.t.some(v => v) && now - st.last > st.wdt) { st.t = [0, 0, 0, 0]; st.trips++; reply('WDT motors stopped, no command received in time'); }
+      for (let i = 0; i < 4; i++) { const d = st.t[i] - st.a[i]; st.a[i] += Math.max(-6, Math.min(6, d)); st.c[i] += Math.round(st.a[i] * 0.44); }
+    }, 20);
+    const handle = line => {
+      const p = line.trim().split(/[\s,]+/); const c = (p[0] || '').toUpperCase();
+      if (!c) return;
+      if (c === 'M' && p.length === 5) { if (st.busy) return reply('ERR busy with self-test, send S to abort'); st.t = p.slice(1).map(v => Math.max(-100, Math.min(100, +v || 0))); st.last = Date.now(); return reply('OK'); }
+      if (c === 'D' && p.length === 3) {
+        if (st.busy) return reply('ERR busy with self-test, send S to abort');
+        let v = Math.max(-100, Math.min(100, +p[1] || 0)); const w = Math.max(-100, Math.min(100, +p[2] || 0));
+        if (st.flip === 'ON') v = -v;      /* on its back: forward and back swap, turning does not */
+        const l = Math.max(-100, Math.min(100, v - w)), r = Math.max(-100, Math.min(100, v + w));
+        const wheel = [l, r, l, r]; const map = st.map.split(' '); const t = [0, 0, 0, 0];
+        map.forEach((m, i) => { const s = m.startsWith('-') ? -1 : 1; t[m.replace(/[-+]/, '').charCodeAt(0) - 65] = s * wheel[i]; });
+        st.t = t; st.last = Date.now(); return reply('OK');
+      }
+      if (c === 'S') { const was = st.busy; st.t = [0, 0, 0, 0]; st.busy = false; if (was) reply('T aborted'); return reply('OK stopped'); }
+      if (c === 'B') { st.t = [0, 0, 0, 0]; st.a = [0, 0, 0, 0]; return reply('OK brake'); }
+      if (c === 'E') return reply(eLine());
+      if (c === 'Z') { st.c = [0, 0, 0, 0]; return reply('OK zeroed'); }
+      if (c === 'P') { clearInterval(teleTimer); const ms = +p[1] || 0; if (ms) teleTimer = setInterval(() => onBytes(eLine() + '\n'), Math.max(50, ms)); return reply('OK telemetry ' + ms + ' ms'); }
+      if (c === 'W') { st.wdt = +p[1] || 0; return reply('OK watchdog ' + st.wdt + ' ms'); }
+      if (c === 'MAP') { if (p.length === 5) st.map = p.slice(1).map(s => s.toUpperCase()).join(' '); return reply((p.length === 5 ? 'OK ' : '') + 'MAP ' + st.map); }
+      if (c === 'T') {
+        st.busy = true; reply('OK self-test started, each channel runs forward then back, wheels off the ground'); reply('T start');
+        ['A', 'B', 'C', 'D'].forEach((ch, i) => setTimeout(() => { if (st.busy) reply('T ' + ch + ' fwd=412 rev=-409 ok, encoder agrees with motor direction'); }, 1600 * (i + 1)));
+        setTimeout(() => { if (st.busy) { st.busy = false; reply('T done'); } }, 6600); return;
+      }
+      if (c === '?' || c === 'STATUS') { reply('STATUS fw=crawler-fw SIM up=' + (Date.now() % 1e6) + ' bt=1 pca=0x7F wdt=' + st.wdt + ' ramp=300 ppr=1320 trips=' + st.trips + ' busy=' + (st.busy ? 1 : 0) + ' name=SIM imu=OK inv=' + (st.flip === 'ON' ? 1 : 0) + ' flip=' + st.flip + ' pose=' + (st.pose || (st.flip === 'ON' ? 'DOWN' : 'UP'))); reply('MAP ' + st.map); reply('TARGET ' + st.t.join(' ')); reply('ACTUAL ' + st.a.join(' ')); return reply(eLine()); }
+      if (c === 'FLIP') {
+        const was = st.flip === 'ON', a = (p[1] || '').toUpperCase();
+        if (p.length > 2 || (a && !['AUTO', 'OFF', 'ON', 'CAL'].includes(a))) return reply('ERR FLIP takes AUTO, OFF, ON or CAL');
+        if (a && a !== 'CAL') st.flip = a;
+        const now = st.flip === 'ON';
+        reply((a ? 'OK ' : '') + 'FLIP mode=' + st.flip + ' inverted=' + (now ? 1 : 0) + ' imu=OK up=' + (now ? -985 : 985) + ' pose=' + (st.pose || (now ? 'DOWN' : 'UP')));
+        if (now !== was) reply(now ? 'FLIP upside down, forward and back are corrected' : 'FLIP upright');
+        return;
+      }
+      if (c === 'IMU') return reply('IMU 20 -15 -985 side=-1 tilt=0');
+      if (c === 'POSE') {      /* simulator only: stand the pretend robot on an edge */
+        const a = (p[1] || '').toUpperCase(); st.pose = (a === 'SIDE' || a === 'END') ? a : '';
+        return reply(a === 'SIDE' ? 'POSE on its side, wheels cannot drive it out, it needs a push' : a === 'END' ? 'POSE on its end' : st.flip === 'ON' ? 'FLIP upside down, forward and back are corrected' : 'POSE upright');
+      }
+      if (c === 'V') return reply('V crawler-fw SIM');
+      if (c === 'H') return reply('H commands: M a b c d | D v w | S | B | E | Z | ? | T | P ms | W ms | R pct_s | MAP fl fr rl rr | PPR n | NAME x | FLIP [AUTO|OFF|ON|CAL|SWAP] | IMU | V | REBOOT');
+      return reply('ERR unknown command ' + c + ', send H for help');
+    };
+    setTimeout(() => onBytes('HELLO crawler-fw SIM connected, send H for help\n'), 100);
+    return { name: 'Simulated robot', send: text => { text.split('\n').forEach(handle); return Promise.resolve(); }, close: () => { clearInterval(timer); clearInterval(teleTimer); } };
+  }
+
+  let wake = null;
+  async function keepAwake(on) {      /* a sleeping screen drops the link, so hold it awake while connected */
+    try { if (on && navigator.wakeLock && !wake) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; }); } else if (!on && wake) { await wake.release(); wake = null; } } catch (e) {}
+  }
+  async function toggleConnect() {
+    if (link) { try { link.close(); } catch (e) {} link = null; driving = false; resetDrive(); setState('off'); keepAwake(false); log('disconnected', 'sys'); return; }
+    const sim = $('sim').checked;
+    setState('connecting');
+    try {
+      link = sim ? connectSim() : await connectBLE();
+      setState(sim ? 'sim' : 'on', link.name);
+      log('connected to ' + link.name, 'sys'); keepAwake(true);
+      await send('V'); await send('MAP'); await send('?'); await send('P ' + TELEMETRY_MS);
+    } catch (e) {
+      link = null; setState('off');
+      const cancelled = /cancel/i.test(e.message || '') || e.name === 'NotFoundError';
+      log(cancelled ? 'no robot chosen' : 'connect failed: ' + e.message, cancelled ? 'sys' : 'err');
+      if (!cancelled) toast('Could not connect: ' + e.message);
+    }
+  }
+  $('connect').addEventListener('click', toggleConnect);
+
+  // ---------- joystick ----------
+  const pad = $('pad'), knob = $('knob');
+  let pointerId = null, v = 0, w = 0, lastSent = '', lastSendAt = 0;
+  const CAR_REVERSE = true;               // reversing: stick left = tail goes left (car), not nose left (tank)
+  function setKnob(nx, ny) { knob.style.left = (36.5 + nx * 36.5) + '%'; knob.style.top = (36.5 - ny * 36.5) + '%'; }
+  function showCmd() {
+    $('fwdv').textContent = (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v) + ' %';
+    $('turnv').textContent = w === 0 ? '0 %' : (w > 0 ? 'L ' : 'R ') + Math.abs(w) + ' %';
+    const fb = $('fwdBar'), tb = $('turnBar'), fw = Math.abs(v) / 2, tw = Math.abs(w) / 2;
+    fb.style.width = fw + '%'; fb.style.left = (v >= 0 ? 50 : 50 - fw) + '%';
+    tb.style.width = tw + '%'; tb.style.left = (w > 0 ? 50 - tw : 50) + '%';      /* +w is a left turn on the board */
+    pad.classList.toggle('active', driving);
+    if ($('driveTag').textContent !== 'Self-test') setTag($('driveTag'), driving ? 'Driving' : 'Idle', driving ? 'accent' : null);
+  }
+  function resetDrive() { v = 0; w = 0; setKnob(0, 0); showCmd(); }
+  function fromEvent(ev) {
+    const r = pad.getBoundingClientRect(); const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    let nx = (ev.clientX - cx) / (r.width / 2), ny = (cy - ev.clientY) / (r.height / 2);
+    const m = Math.hypot(nx, ny); if (m > 1) { nx /= m; ny /= m; }
+    const dead = 0.08; const dz = x => Math.abs(x) < dead ? 0 : (x - Math.sign(x) * dead) / (1 - dead);
+    nx = dz(nx); ny = dz(ny);
+    setKnob(nx, ny);
+    const lim = +$('lim').value;
+    v = Math.round(ny * lim);
+    w = Math.round(-nx * lim * 0.8);      // stick right = turn right = negative w on the board
+    showCmd();
+  }
+  pad.addEventListener('pointerdown', ev => { pointerId = ev.pointerId; pad.setPointerCapture(ev.pointerId); driving = true; fromEvent(ev); ev.preventDefault(); });
+  pad.addEventListener('pointermove', ev => { if (driving && ev.pointerId === pointerId) fromEvent(ev); });
+  const release = ev => { if (ev && ev.pointerId !== pointerId) return; const was = driving; driving = false; pointerId = null; resetDrive(); if (link && (was || !ev)) { send('D 0 0'); send('S'); } };
+  pad.addEventListener('pointerup', release); pad.addEventListener('pointercancel', release); pad.addEventListener('lostpointercapture', release);
+
+  setInterval(() => {
+    if (!link) return;
+    const now = Date.now();
+    if (driving) {
+      /* Reverse steers like a car (13 Nov 2026): backing up with the stick left, the TAIL goes left.
+         The board always spins the nose toward +w, so in reverse the turn is sent the other way round.
+         Set CAR_REVERSE = false for tank steering (nose always follows the stick). */
+      const line = 'D ' + v + ' ' + (CAR_REVERSE && v < 0 ? -w : w);
+      if (line !== lastSent || now - lastSendAt >= SEND_PERIOD_MS) { send(line); lastSent = line; lastSendAt = now; }
+    }
+    if (!lastReplyAt) return;
+    const age = (now - lastReplyAt) / 1000, stale = age > STALE_S;
+    document.body.dataset.link = stale ? 'stale' : 'live';
+    setTag($('linkTag'), stale ? 'Link stale' : 'Live', stale ? 'warn' : 'ok');
+    $('linkv').textContent = stale ? 'Stale' : 'Live'; setTone('stLink', stale ? 'warn' : 'ok');
+    $('links').textContent = 'last reply ' + age.toFixed(1) + ' s ago';
+  }, SEND_PERIOD_MS);
+
+  // keyboard for laptop use
+  const keys = new Set();
+  function keyDrive() {
+    const lim = +$('lim').value; let kv = 0, kw = 0;
+    if (keys.has('w') || keys.has('arrowup')) kv += 1; if (keys.has('s') || keys.has('arrowdown')) kv -= 1;
+    if (keys.has('a') || keys.has('arrowleft')) kw += 1; if (keys.has('d') || keys.has('arrowright')) kw -= 1;
+    if (kv || kw) { driving = true; v = Math.round(kv * lim); w = Math.round(kw * lim * 0.8); setKnob(-kw, kv); showCmd(); }
+    else if (driving && pointerId === null) release(null);
+  }
+  window.addEventListener('keydown', ev => { if (ev.target.tagName === 'INPUT' || $('dlg').open) return; const k = ev.key.toLowerCase(); if (k === ' ') { ev.preventDefault(); stopAll('S'); return; } if ('wasd'.includes(k) || k.startsWith('arrow')) { keys.add(k); keyDrive(); ev.preventDefault(); } });
+  window.addEventListener('keyup', ev => { const k = ev.key.toLowerCase(); if (keys.delete(k)) keyDrive(); });
+  window.addEventListener('blur', () => { if (keys.size) { keys.clear(); keyDrive(); } });
+
+  // ---------- buttons and console ----------
+  function stopAll(cmd) { keys.clear(); const was = driving; driving = false; pointerId = null; resetDrive(); if (link) { if (was) send('D 0 0'); send(cmd); } else toast('Not connected. Nothing to stop.', 'warn'); }
+  const limFill = () => { const el = $('lim'); el.style.setProperty('--fill', ((el.value - el.min) / (el.max - el.min) * 100) + '%'); $('limv').textContent = el.value; };
+  $('lim').addEventListener('input', limFill); limFill();
+  $('stop').addEventListener('click', () => stopAll('S'));
+  $('stopFab').addEventListener('click', () => stopAll('S'));
+  $('brake').addEventListener('click', () => stopAll('B'));
+  /* Flip demo (13 Nov 2026): FLIP ON makes the board act as if it is on its back, so the simulator rolls the
+     crawler over and forward on the stick still drives nose first. Second press sends FLIP AUTO, back to the sensor. */
+  $('flipDemo').addEventListener('click', () => {
+    if (!link) return toast('Not connected. Press Connect first.', 'warn');
+    if (inverted) { send('FLIP AUTO'); $('flipDemo').textContent = 'Flip over'; toast('Back to automatic. The sensor decides which way up.', 'ok'); }
+    else { send('FLIP ON'); $('flipDemo').textContent = 'Flip back'; }
+  });
+  $('selftest').addEventListener('click', async () => {
+    if (!link) return toast('Not connected. Press Connect first.', 'warn');
+    if (await ask('Run the self-test?', 'Each motor spins forward and then back for about a second. Lift the robot so all four wheels are off the ground first.', 'Run self-test')) send('T');
+  });
+  $('status').addEventListener('click', () => send('?'));
+  $('zero').addEventListener('click', () => send('Z'));
+  document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => send(c.dataset.cmd)));
+  $('clearLog').addEventListener('click', () => { logEl.textContent = ''; });
+  $('copyLog').addEventListener('click', async () => {
+    const text = logText();
+    try { await navigator.clipboard.writeText(text); toast('Console copied', 'ok'); }
+    catch (e) { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); toast('Console copied', 'ok'); } catch (e2) { toast('Could not copy'); } ta.remove(); }
+  });
+  const hist = []; let hi = 0;
+  $('form').addEventListener('submit', ev => { ev.preventDefault(); const t = $('cmd').value.trim(); if (t) { send(t); if (hist[hist.length - 1] !== t) hist.push(t); hi = hist.length; $('cmd').value = ''; } });
+  $('cmd').addEventListener('keydown', ev => {
+    if (ev.key === 'ArrowUp' && hi > 0) { hi--; $('cmd').value = hist[hi]; ev.preventDefault(); }
+    else if (ev.key === 'ArrowDown' && hi < hist.length) { hi++; $('cmd').value = hist[hi] || ''; ev.preventDefault(); }
+  });
+  window.addEventListener('pagehide', () => { if (link) send('S'); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { if (link && driving) release(null); } else if (link) keepAwake(true); });
+
+  if (matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches) $('kbdHint').hidden = true;
+  if (!navigator.bluetooth) {
+    $('banner').hidden = false;
+    $('banner').textContent = window.isSecureContext === false
+      ? 'Bluetooth is switched off for this address. Fix: in Chrome open  chrome://flags/#unsafely-treat-insecure-origin-as-secure  , type  ' + location.origin + '  in its text box (exactly that, nothing after it), set the menu to Enabled, then tap Relaunch. The simulator works without this.'
+      : 'This browser cannot use Bluetooth. Use Chrome on Android, or Chrome or Edge on a laptop. On an iPhone, use the Bluefy browser. The simulator still works here.';
+    log('no Web Bluetooth here. Switch on Simulator to try the console without a robot.', 'sys');
+  } else log('ready. Press Connect and choose CRAWLER, or switch on Simulator.', 'sys');
+  showCmd();
+
+  // ---------- self-test of this page (open with #autotest, used by the build check on the laptop) ----------
+  if (location.hash === '#autotest') {
+    const out = document.createElement('pre'); out.id = 'autotest'; out.style.cssText = 'white-space:pre-wrap;word-break:break-all;max-width:100%;padding:12px;font-size:11px'; document.body.appendChild(out);
+    const note = s => { out.textContent += s + '\n'; };
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    window.addEventListener('error', e => note('JSERROR ' + e.message));
+    (async () => {
+      try {
+        $('sim').checked = true; await toggleConnect();
+        note('connected=' + !!link + ' name=' + (link && link.name) + ' state=' + document.body.dataset.state);
+        note('layout: innerWidth=' + innerWidth + ' scrollWidth=' + document.documentElement.scrollWidth + (document.documentElement.scrollWidth <= innerWidth ? ' OK' : ' OVERFLOW'));
+        const wide = [...document.querySelectorAll('.bar, main, .panel, .chassis, .stats, .vec, .actions, .chips, .cmdline, #log, #pad')].filter(el => el.scrollWidth > el.clientWidth + 1 || el.getBoundingClientRect().right > innerWidth + 1);
+        note('blocks wider than the screen: ' + (wide.length ? wide.map(e => e.className || e.id).join(', ') + ' OVERFLOW' : 'none OK'));
+        await wait(400);
+        note('tiles: driver=' + $('drvv').textContent + ' (' + $('drvs').textContent + ') watchdog=' + $('wdtv').textContent + ' map=' + $('mapv').textContent + ' fw=' + $('fw').textContent);
+        driving = true; v = 40; w = 0; showCmd();
+        await wait(1500);
+        note('after 1.5 s drive: rpm0=' + $('rpm0').textContent + ' cnt0=' + $('cnt0').textContent + ' throttle=' + $('fwdv').textContent + ' tag=' + $('driveTag').textContent + ' bar0=' + $('bar0').style.width);
+        release(null); await wait(800);
+        note('after release: rpm0=' + $('rpm0').textContent + ' throttle=' + $('fwdv').textContent + ' tag=' + $('driveTag').textContent);
+        await send('MAP A -B C -D'); await wait(300);
+        note('map=' + $('mapv').textContent + ' ch1=' + $('ch1').textContent);
+        driving = true; v = 30; w = 0; await wait(1000);
+        note('mapped drive: FR rpm=' + $('rpm1').textContent + ' (should be positive, channel B inverted twice) cnt1=' + $('cnt1').textContent);
+        release(null); await wait(500);
+        driving = true; v = 30; w = 0; showCmd(); await wait(250); driving = false; await wait(900);
+        await send('FLIP ON'); await wait(300);
+        note('flip tag after FLIP ON: ' + ($('flipTag').hidden ? 'hidden' : $('flipTag').textContent) + ' (expect Upside down)');
+        driving = true; v = 30; w = 0; showCmd(); await wait(1000);
+        note('forward stick while upside down: FL rpm=' + $('rpm0').textContent + ' (expect negative: the board reverses the wheels)');
+        release(null); await wait(600);
+        await send('FLIP AUTO'); await wait(300);
+        note('flip tag after FLIP AUTO: ' + ($('flipTag').hidden ? 'hidden' : $('flipTag').textContent) + ' (expect hidden)');
+        await send('POSE SIDE'); await wait(300);
+        note('tag after POSE SIDE: ' + ($('flipTag').hidden ? 'hidden' : $('flipTag').textContent) + ' (expect On its side)');
+        await send('POSE UP'); await wait(300);
+        note('tag after POSE UP: ' + ($('flipTag').hidden ? 'hidden' : $('flipTag').textContent) + ' (expect hidden)');
+        note('watchdog after a stalled command stream: ' + $('wdts').textContent + ' (expect 1 safety stop)');
+        resetDrive();
+        await send('T'); await wait(7500);
+        note('self-test badges: ' + [0, 1, 2, 3].map(i => $('tst' + i).hidden ? 'none' : $('tst' + i).textContent).join(' '));
+        note('fw=' + $('fw').textContent + ' link=' + $('linkv').textContent + ' ' + $('links').textContent + ' linkTag=' + $('linkTag').textContent);
+        note('LOG: ' + logText().split('\n').join(' | '));
+        note('AUTOTEST_DONE');
+      } catch (e) { note('AUTOTEST_ERROR ' + e.message + ' ' + e.stack); }
+    })();
+  }
+})();
+</script>
+</body>
+</html>
